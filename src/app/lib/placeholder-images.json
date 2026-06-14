@@ -1,0 +1,17 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-sports",
+      "description": "A beautiful view of a sports field in Kerala",
+      "imageUrl": "https://picsum.photos/seed/kerala-sports/1200/600",
+      "imageHint": "kerala sports"
+    },
+    {
+      "id": "club-logo",
+      "description": "A classic sports club emblem",
+      "imageUrl": "https://picsum.photos/seed/strikers-logo/200/200",
+      "imageHint": "sports logo"
+    }
+  ]
+}
