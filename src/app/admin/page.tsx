@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,7 +22,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [showQueueModal, setShowQueueModal] = useState(false);
   const { toast } = useToast();
 
-  // New User Forms
   const [newMember, setNewMember] = useState({ name: '', phone: '' });
   const [newAdmin, setNewAdmin] = useState({ name: '', email: '', password: '' });
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -92,7 +92,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
-      toast({ title: "Payment Verified", description: `₹100 added to revenue for ${member.name}.` });
+      toast({ title: "Payment Verified", description: `₹100 added to revenue and ledger for ${member.name}.` });
     } else {
       const lastTransactionIndex = newTransactions.findIndex(t => 
         t.description === `Monthly Fee - ${member.name}` && t.type === 'income'
@@ -130,10 +130,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     setIsGenerating(true);
-    toast({ title: "AI Drafts Initialized", description: `Processing alerts...` });
+    toast({ title: "AI Drafts Initialized", description: `Processing alerts for ${unpaidMembers.length} members...` });
     
     try {
       const results: { member: Member, message: string }[] = [];
+      // Process sequentially to avoid race conditions or limits
       for (const member of unpaidMembers) {
         const result = await automatedPaymentReminders({
           memberName: member.name,
@@ -146,7 +147,8 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setReminderQueue(results);
       setShowQueueModal(true);
     } catch (error: any) {
-      toast({ title: "System Error", description: "Failed to generate AI messages.", variant: "destructive" });
+      console.error(error);
+      toast({ title: "System Error", description: "Failed to generate AI messages. Check your connection.", variant: "destructive" });
     } finally {
       setIsGenerating(false);
     }
@@ -202,7 +204,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </Card>
 
         <Card className="bg-white border-none shadow-xl p-8 flex flex-col justify-center">
-          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Admin Management</p>
+          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Registry Control</p>
           <div className="flex flex-col gap-2">
             <Dialog open={isMemberModalOpen} onOpenChange={setIsMemberModalOpen}>
               <DialogTrigger asChild>

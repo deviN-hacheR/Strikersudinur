@@ -1,3 +1,4 @@
+
 "use client";
 
 export interface Member {
@@ -51,7 +52,7 @@ export function getClubState() {
       { email: CLUB_EMAIL, password: ADMIN_PASSWORD, name: 'Super Admin' }
     ] as Admin[],
     transactions: [
-      { id: 't1', type: 'income', amount: 30000, description: 'Initial club balance', date: new Date().toISOString() }
+      { id: 'initial-bal', type: 'income', amount: 30000, description: 'Initial club balance', date: new Date().toISOString() }
     ] as Transaction[]
   };
   saveClubState(initialState);

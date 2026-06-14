@@ -1,56 +1,86 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
-import { getClubState, saveClubState, Member, Admin } from "@/lib/club-data";
+import { getClubState, Member, Admin } from "@/lib/club-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Trophy, ShieldCheck, User as UserIcon, LogOut } from "lucide-react";
+import { Trophy, ShieldCheck, User as UserIcon, LogOut, Loader2 } from "lucide-react";
 import AdminDashboard from "./admin/page";
 import MemberPortal from "./member/page";
 
 export default function Home() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [user, setUser] = useState<{ role: 'admin' | 'member', data?: Member | Admin } | null>(null);
   const [error, setError] = useState("");
   const [clubState, setClubState] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setClubState(getClubState());
+    const state = getClubState();
+    setClubState(state);
+    setIsLoading(false);
   }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!clubState) return;
+    if (!clubState) {
+        setError("Club registry not loaded. Please refresh.");
+        return;
+    }
 
-    // Check Admins
-    const admin = clubState.admins.find((a: Admin) => a.email === email && a.password === password);
+    const trimmedId = identifier.trim();
+    const trimmedPass = password.trim();
+
+    if (!trimmedId || !trimmedPass) {
+        setError("Please enter both ID and Password.");
+        return;
+    }
+
+    // 1. Check Admins
+    const admin = clubState.admins.find(
+      (a: Admin) => a.email.toLowerCase() === trimmedId.toLowerCase() && a.password === trimmedPass
+    );
     if (admin) {
       setUser({ role: 'admin', data: admin });
       return;
     }
 
-    // Check Members
-    const member = clubState.members.find((m: Member) => m.phone.replace(/\s/g, '') === password.replace(/\s/g, ''));
-    if (member && email === clubState.admins[0].email) { // Use super admin email as identifier or just match member
-        setUser({ role: 'member', data: member });
-        return;
-    }
-    
-    // Fallback for members just using phone
-    if (email.length < 5 && !email.includes('@')) {
-        const memberByPhone = clubState.members.find((m: Member) => m.phone.replace(/\s/g, '') === password.replace(/\s/g, ''));
-        if (memberByPhone) {
-            setUser({ role: 'member', data: memberByPhone });
-            return;
-        }
+    // 2. Check Members
+    // Identifier can be Name or Phone. Password is always Phone.
+    const member = clubState.members.find((m: Member) => {
+      const phoneOnly = m.phone.replace(/\s+/g, '').replace('+', '');
+      const passOnly = trimmedPass.replace(/\s+/g, '').replace('+', '');
+      const idOnly = trimmedId.replace(/\s+/g, '').replace('+', '');
+      
+      const isPasswordMatch = phoneOnly.endsWith(passOnly) || passOnly.endsWith(phoneOnly);
+      const isIdentifierMatch = 
+        m.name.toLowerCase() === trimmedId.toLowerCase() || 
+        phoneOnly.endsWith(idOnly) || 
+        idOnly.endsWith(phoneOnly);
+
+      return isPasswordMatch && isIdentifierMatch;
+    });
+
+    if (member) {
+      setUser({ role: 'member', data: member });
+      return;
     }
 
-    setError("Invalid credentials. Please check your login details.");
+    setError("Invalid credentials. Use your registered phone number as the password.");
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (user?.role === 'admin') return <AdminDashboard onLogout={() => setUser(null)} />;
   if (user?.role === 'member') return <MemberPortal member={user.data as Member} onLogout={() => setUser(null)} />;
@@ -74,12 +104,12 @@ export default function Home() {
         <CardContent className="pb-10 px-8">
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-muted-foreground font-body uppercase tracking-wider">Login ID / Email</label>
+              <label className="text-sm font-bold text-muted-foreground font-body uppercase tracking-wider">Email or Name</label>
               <Input 
                 type="text" 
-                placeholder="strikersudinur@gmail.com or Member ID" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="strikersudinur@gmail.com or Full Name" 
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="bg-secondary/30 border-none h-12 text-base focus-visible:ring-primary"
               />
             </div>
@@ -92,7 +122,7 @@ export default function Home() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="bg-secondary/30 border-none h-12 text-base focus-visible:ring-primary"
               />
-              <p className="text-[10px] text-muted-foreground font-body">Members: Use your phone number as password</p>
+              <p className="text-[10px] text-muted-foreground font-body">Members: Use your registered phone number as your password</p>
             </div>
             {error && <p className="text-destructive text-sm font-body bg-destructive/5 p-3 rounded-md border border-destructive/10 text-center">{error}</p>}
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white h-12 text-lg font-headline transition-all duration-300 transform hover:scale-[1.02]">
@@ -103,7 +133,7 @@ export default function Home() {
       </Card>
       
       <div className="mt-12 text-center text-muted-foreground font-body text-sm max-w-xs opacity-60">
-        <p>Strikers Ledger v1.2 • Udinur, Kasargod, Kerala</p>
+        <p>Strikers Ledger v1.3 • Udinur, Kasargod, Kerala</p>
       </div>
     </div>
   );
