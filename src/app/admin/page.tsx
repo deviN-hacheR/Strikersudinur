@@ -8,12 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MemberStatusCard } from "@/components/dashboard/MemberStatusCard";
 import { TransactionModal } from "@/components/dashboard/TransactionModal";
-import { Trophy, TrendingUp, TrendingDown, Users, LogOut, Send, MessageSquareText } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, Users, LogOut, Send, MessageSquareText, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
 import { automatedPaymentReminders } from "@/ai/flows/automated-payment-reminders";
 import { toast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [state, setState] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [reminderQueue, setReminderQueue] = useState<{ member: Member, message: string }[]>([]);
+  const [showQueueModal, setShowQueueModal] = useState(false);
 
   useEffect(() => {
     setState(getClubState());
@@ -22,24 +26,50 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   if (!state) return null;
 
   const handleTogglePayment = (memberId: string) => {
+    const member = state.members.find((m: Member) => m.id === memberId);
+    if (!member) return;
+
+    const becomingPaid = !member.hasPaidThisMonth;
+    
+    // Create new transaction if becoming paid
+    let newTransactions = [...state.transactions];
+    let newRevenue = state.revenue;
+
+    if (becomingPaid) {
+      const t: Transaction = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'income',
+        amount: 100,
+        description: `Monthly Fee - ${member.name}`,
+        date: new Date().toISOString()
+      };
+      newTransactions = [t, ...newTransactions];
+      newRevenue += 100;
+    }
+
     const newMembers = state.members.map((m: Member) => {
       if (m.id === memberId) {
-        const hasPaid = !m.hasPaidThisMonth;
-        // If becoming paid, add ₹100 income
-        if (hasPaid) {
-          addTransaction({
-            type: 'income',
-            amount: 100,
-            description: `Monthly Fee - ${m.name}`
-          });
-        }
-        return { ...m, hasPaidThisMonth: hasPaid };
+        return { ...m, hasPaidThisMonth: becomingPaid };
       }
       return m;
     });
-    const newState = { ...state, members: newMembers };
+
+    const newState = {
+      ...state,
+      members: newMembers,
+      revenue: newRevenue,
+      transactions: newTransactions
+    };
+
     setState(newState);
     saveClubState(newState);
+    
+    if (becomingPaid) {
+      toast({
+        title: "Payment Recorded",
+        description: `₹100 added to revenue for ${member.name}.`
+      });
+    }
   };
 
   const addTransaction = (t: { type: 'income' | 'expense', amount: number, description: string }) => {
@@ -58,15 +88,17 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     saveClubState(newState);
   };
 
-  const sendReminders = async (day: '5th' | '21st') => {
+  const generateReminders = async (day: '5th' | '21st') => {
     const unpaidMembers = state.members.filter((m: Member) => !m.hasPaidThisMonth);
     if (unpaidMembers.length === 0) {
-      toast({ title: "No reminders needed", description: "All members have paid for this month." });
+      toast({ title: "All Settled", description: "Every member has paid their fee for this month." });
       return;
     }
 
-    toast({ title: "Sending AI Reminders...", description: `Drafting messages for ${unpaidMembers.length} members.` });
+    setIsGenerating(true);
+    toast({ title: "AI Working...", description: `Generating personalized messages for ${unpaidMembers.length} members.` });
     
+    const queue = [];
     for (const member of unpaidMembers) {
       try {
         const result = await automatedPaymentReminders({
@@ -75,13 +107,21 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           clubName: "Strikers Udinur",
           reminderDate: `${day} of the month`
         });
-        console.log(`Reminder for ${member.name}:`, result.reminderMessage);
+        queue.push({ member, message: result.reminderMessage });
       } catch (err) {
         console.error("AI flow error", err);
       }
     }
     
-    toast({ title: "Reminders Sent", description: `Personalized AI alerts have been queued for sending.` });
+    setReminderQueue(queue);
+    setIsGenerating(false);
+    setShowQueueModal(true);
+  };
+
+  const sendToWhatsApp = (phone: string, message: string) => {
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${phone.replace(/\s/g, '')}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   return (
@@ -148,9 +188,9 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <h3 className="text-2xl font-headline text-foreground">Recent Audit Log</h3>
               <TransactionModal onAdd={addTransaction} />
             </div>
-            <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border overflow-hidden max-h-[600px] overflow-y-auto">
               <Table>
-                <TableHeader className="bg-secondary/30">
+                <TableHeader className="bg-secondary/30 sticky top-0 z-10">
                   <TableRow>
                     <TableHead className="font-body uppercase text-xs">Date</TableHead>
                     <TableHead className="font-body uppercase text-xs">Description</TableHead>
@@ -200,19 +240,65 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <section className="bg-secondary/20 p-6 rounded-2xl border border-primary/10">
             <h3 className="text-xl font-headline text-primary mb-4">Payment Alerts</h3>
             <p className="font-body text-sm text-muted-foreground mb-6">
-              Automate reminders to members with outstanding monthly fees using AI-personalized messaging.
+              Automatically draft AI-personalized WhatsApp messages for all members with outstanding fees.
             </p>
             <div className="grid grid-cols-1 gap-3">
-              <Button onClick={() => sendReminders('5th')} className="bg-primary text-white font-body">
-                <Send className="mr-2 h-4 w-4" /> Send 5th Day Alert
+              <Button 
+                onClick={() => generateReminders('5th')} 
+                disabled={isGenerating}
+                className="bg-primary text-white font-body"
+              >
+                {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send 5th Day Alert
               </Button>
-              <Button onClick={() => sendReminders('21st')} variant="outline" className="border-primary text-primary font-body hover:bg-primary/5">
-                <Send className="mr-2 h-4 w-4" /> Send 21st Day Alert
+              <Button 
+                onClick={() => generateReminders('21st')} 
+                disabled={isGenerating}
+                variant="outline" 
+                className="border-primary text-primary font-body hover:bg-primary/5"
+              >
+                {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send 21st Day Alert
               </Button>
             </div>
           </section>
         </div>
       </div>
+
+      {/* Reminder Queue Modal */}
+      <Dialog open={showQueueModal} onOpenChange={setShowQueueModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden bg-white">
+          <DialogHeader className="p-6 border-b">
+            <DialogTitle className="text-2xl font-headline">AI Reminder Queue</DialogTitle>
+            <DialogDescription className="font-body">
+              Below are personalized messages generated for unpaid members. Click send to open WhatsApp for each.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {reminderQueue.map((item, index) => (
+              <div key={index} className="bg-secondary/20 p-4 rounded-xl border border-border">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-headline font-bold text-primary">{item.member.name}</span>
+                  <span className="text-xs font-body text-muted-foreground">{item.member.phone}</span>
+                </div>
+                <p className="font-body text-sm italic mb-4 whitespace-pre-wrap">"{item.message}"</p>
+                <Button 
+                  size="sm" 
+                  onClick={() => sendToWhatsApp(item.member.phone, item.message)}
+                  className="w-full bg-accent text-white font-body"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" /> Send via WhatsApp
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="p-6 border-t bg-secondary/10">
+            <Button onClick={() => setShowQueueModal(false)} className="bg-primary text-white font-body">
+              Done Processing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
