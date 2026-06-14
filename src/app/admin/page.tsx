@@ -1,16 +1,15 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
 import { getClubState, saveClubState, Transaction, Member, TREASURER_NAME, TREASURER_PHONE } from "@/lib/club-data";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MemberStatusCard } from "@/components/dashboard/MemberStatusCard";
 import { TransactionModal } from "@/components/dashboard/TransactionModal";
-import { Trophy, TrendingUp, TrendingDown, Users, LogOut, Send, MessageSquareText, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
+import { TrendingUp, Users, LogOut, Send, MessageSquareText, Loader2, ExternalLink, AlertCircle } from "lucide-react";
 import { automatedPaymentReminders } from "@/ai/flows/automated-payment-reminders";
-import { toast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
@@ -18,6 +17,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [reminderQueue, setReminderQueue] = useState<{ member: Member, message: string }[]>([]);
   const [showQueueModal, setShowQueueModal] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setState(getClubState());
@@ -31,7 +31,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
     const becomingPaid = !member.hasPaidThisMonth;
     
-    // Create new transaction if becoming paid
     let newTransactions = [...state.transactions];
     let newRevenue = state.revenue;
 
@@ -45,6 +44,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
+    } else {
+      // If unmarking as paid, technically we should reverse the revenue and transaction
+      // For simplicity in this ledger, we just remove the specific income transaction if found
+      const lastTransactionIndex = newTransactions.findIndex(t => t.description === `Monthly Fee - ${member.name}` && t.type === 'income');
+      if (lastTransactionIndex !== -1) {
+        newRevenue -= newTransactions[lastTransactionIndex].amount;
+        newTransactions.splice(lastTransactionIndex, 1);
+      }
     }
 
     const newMembers = state.members.map((m: Member) => {
@@ -90,37 +97,65 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const generateReminders = async (day: '5th' | '21st') => {
     const unpaidMembers = state.members.filter((m: Member) => !m.hasPaidThisMonth);
+    
     if (unpaidMembers.length === 0) {
-      toast({ title: "All Settled", description: "Every member has paid their fee for this month." });
+      toast({ 
+        title: "All Settled", 
+        description: "Every member has paid their fee for this month.",
+        variant: "default"
+      });
       return;
     }
 
     setIsGenerating(true);
-    toast({ title: "AI Working...", description: `Generating personalized messages for ${unpaidMembers.length} members.` });
+    toast({ 
+      title: "AI Processing", 
+      description: `Drafting personalized reminders for ${unpaidMembers.length} members...` 
+    });
     
-    const queue = [];
-    for (const member of unpaidMembers) {
-      try {
-        const result = await automatedPaymentReminders({
-          memberName: member.name,
-          memberPhoneNumber: member.phone,
-          clubName: "Strikers Udinur",
-          reminderDate: `${day} of the month`
+    try {
+      // Parallelize AI generations for speed
+      const results = await Promise.all(unpaidMembers.map(async (member) => {
+        try {
+          const result = await automatedPaymentReminders({
+            memberName: member.name,
+            memberPhoneNumber: member.phone,
+            clubName: "Strikers Udinur",
+            reminderDate: `${day} of the month`
+          });
+          return { member, message: result.reminderMessage };
+        } catch (err) {
+          console.error(`Error generating reminder for ${member.name}:`, err);
+          return null;
+        }
+      }));
+      
+      const validResults = results.filter(r => r !== null) as { member: Member, message: string }[];
+      
+      if (validResults.length === 0) {
+        toast({
+          title: "Error",
+          description: "Failed to generate AI messages. Please try again.",
+          variant: "destructive"
         });
-        queue.push({ member, message: result.reminderMessage });
-      } catch (err) {
-        console.error("AI flow error", err);
+      } else {
+        setReminderQueue(validResults);
+        setShowQueueModal(true);
       }
+    } catch (error) {
+      toast({
+        title: "System Error",
+        description: "Something went wrong while processing reminders.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGenerating(false);
     }
-    
-    setReminderQueue(queue);
-    setIsGenerating(false);
-    setShowQueueModal(true);
   };
 
   const sendToWhatsApp = (phone: string, message: string) => {
     const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${phone.replace(/\s/g, '')}?text=${encodedMessage}`;
+    const whatsappUrl = `https://wa.me/${phone.replace(/\s/g, '').replace('+', '')}?text=${encodedMessage}`;
     window.open(whatsappUrl, '_blank');
   };
 
@@ -238,9 +273,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </section>
 
           <section className="bg-secondary/20 p-6 rounded-2xl border border-primary/10">
-            <h3 className="text-xl font-headline text-primary mb-4">Payment Alerts</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <AlertCircle className="h-5 w-5 text-primary" />
+              <h3 className="text-xl font-headline text-primary">Payment Alerts</h3>
+            </div>
             <p className="font-body text-sm text-muted-foreground mb-6">
-              Automatically draft AI-personalized WhatsApp messages for all members with outstanding fees.
+              Generate AI-personalized WhatsApp messages for members with outstanding fees.
             </p>
             <div className="grid grid-cols-1 gap-3">
               <Button 
@@ -249,7 +287,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 className="bg-primary text-white font-body"
               >
                 {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                Send 5th Day Alert
+                Process 5th Day Alert
               </Button>
               <Button 
                 onClick={() => generateReminders('21st')} 
@@ -258,7 +296,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 className="border-primary text-primary font-body hover:bg-primary/5"
               >
                 {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                Send 21st Day Alert
+                Process 21st Day Alert
               </Button>
             </div>
           </section>
@@ -267,11 +305,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* Reminder Queue Modal */}
       <Dialog open={showQueueModal} onOpenChange={setShowQueueModal}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden bg-white">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-white">
           <DialogHeader className="p-6 border-b">
             <DialogTitle className="text-2xl font-headline">AI Reminder Queue</DialogTitle>
             <DialogDescription className="font-body">
-              Below are personalized messages generated for unpaid members. Click send to open WhatsApp for each.
+              {reminderQueue.length} messages prepared. Browser security requires sending them one by one.
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -281,20 +319,20 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <span className="font-headline font-bold text-primary">{item.member.name}</span>
                   <span className="text-xs font-body text-muted-foreground">{item.member.phone}</span>
                 </div>
-                <p className="font-body text-sm italic mb-4 whitespace-pre-wrap">"{item.message}"</p>
+                <p className="font-body text-sm italic mb-4 whitespace-pre-wrap bg-white/50 p-3 rounded-lg border">"{item.message}"</p>
                 <Button 
                   size="sm" 
                   onClick={() => sendToWhatsApp(item.member.phone, item.message)}
-                  className="w-full bg-accent text-white font-body"
+                  className="w-full bg-accent text-white font-body hover:bg-accent/90"
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" /> Send via WhatsApp
+                  <ExternalLink className="mr-2 h-4 w-4" /> Send to {item.member.name}
                 </Button>
               </div>
             ))}
           </div>
           <DialogFooter className="p-6 border-t bg-secondary/10">
             <Button onClick={() => setShowQueueModal(false)} className="bg-primary text-white font-body">
-              Done Processing
+              Close Queue
             </Button>
           </DialogFooter>
         </DialogContent>
