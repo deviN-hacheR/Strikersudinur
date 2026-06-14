@@ -130,27 +130,36 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     setIsGenerating(true);
-    toast({ title: "AI Drafts Initialized", description: `Processing alerts for ${unpaidMembers.length} members...` });
+    toast({ title: "AI Drafts Initialized", description: `Generating alerts for ${unpaidMembers.length} members. This may take a moment...` });
     
     try {
       const results: { member: Member, message: string }[] = [];
-      // Sequential processing for reliability
       for (const member of unpaidMembers) {
-        const result = await automatedPaymentReminders({
-          memberName: member.name,
-          memberPhoneNumber: member.phone,
-          clubName: "Strikers Udinur",
-          reminderDate: dayLabel
-        });
-        results.push({ member, message: result.reminderMessage });
+        try {
+          const result = await automatedPaymentReminders({
+            memberName: member.name,
+            memberPhoneNumber: member.phone,
+            clubName: "Strikers Udinur",
+            reminderDate: dayLabel
+          });
+          results.push({ member, message: result.reminderMessage });
+        } catch (innerError) {
+          console.error(`Failed for ${member.name}:`, innerError);
+          // Continue with others even if one fails
+        }
       }
+
+      if (results.length === 0) {
+        throw new Error("Could not generate any messages. Please check if your GOOGLE_GENAI_API_KEY is set in the .env file.");
+      }
+
       setReminderQueue(results);
       setShowQueueModal(true);
     } catch (error: any) {
       console.error("AI Error:", error);
       toast({ 
         title: "System Error", 
-        description: error.message || "Failed to generate AI messages. Check your connection or API key.", 
+        description: error.message || "Connection failed. Please ensure your Gemini API Key is valid.", 
         variant: "destructive" 
       });
     } finally {

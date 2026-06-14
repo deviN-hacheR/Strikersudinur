@@ -52,14 +52,14 @@ export function getClubState() {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      // Ensure admins array exists even in old saves
+      // Ensure admins array exists
       if (!parsed.admins || !Array.isArray(parsed.admins)) {
         parsed.admins = defaultInitialState.admins;
       }
-      // Ensure initial balance transaction exists and revenue is correct
+      // Ensure initial balance transaction exists and revenue is at least 30000
       if (!parsed.transactions.some((t: any) => t.id === 'initial-bal')) {
         parsed.transactions.push(defaultInitialState.transactions[0]);
-        parsed.revenue += 30000;
+        parsed.revenue = (parsed.revenue || 0) + 30000;
       }
       return parsed;
     } catch (e) {
