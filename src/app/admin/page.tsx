@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getClubState, saveClubState, Transaction, Member, Admin, TREASURER_NAME, TREASURER_PHONE } from "@/lib/club-data";
+import { getClubState, saveClubState, Transaction, Member, Admin } from "@/lib/club-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -138,7 +138,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       for (const member of unpaidMembers) {
         try {
-          // Attempt AI Generation
           const result = await automatedPaymentReminders({
             memberName: member.name,
             memberPhoneNumber: member.phone,
@@ -147,7 +146,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           });
           results.push({ member, message: result.reminderMessage });
         } catch (error) {
-          // Fallback to Mock Template if AI fails (e.g. no API key)
           usedFallback = true;
           const fallbackMessage = `Namaste ${member.name},\n\nThis is a friendly reminder from Strikers Udinur. Our records show that the monthly fee of ₹100 for this month is still pending. \n\nPlease settle this by ${dayLabel} to help us continue our club activities smoothly.\n\nThank you for your support!\n- Strikers Udinur Management`;
           results.push({ member, message: fallbackMessage });
@@ -168,27 +166,20 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       }
 
     } catch (globalError: any) {
-      toast({ 
-        title: "System Error", 
-        description: "Failed to initialize the queue. Please try again.", 
-        variant: "destructive" 
-      });
+      toast({ title: "System Error", description: "Failed to initialize the queue.", variant: "destructive" });
     } finally {
       setIsGenerating(false);
     }
   };
 
   const sendToWhatsApp = (phone: string, message: string) => {
-    // Clean the phone number: remove non-digits
     const cleanPhone = phone.replace(/\D/g, '');
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
     
-    // Use window.open with a small delay to prevent browser blocking
     setTimeout(() => {
         const newTab = window.open(whatsappUrl, '_blank');
         if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-            // Fallback for popup blockers
             window.location.assign(whatsappUrl);
         }
     }, 100);
@@ -247,7 +238,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <DialogContent className="bg-white">
                 <DialogHeader>
                     <DialogTitle className="font-headline">New Member Entry</DialogTitle>
-                    <DialogDescription>Register a new player or artist into the club ledger.</DialogDescription>
+                    <DialogDescription>Register a new player into the club ledger.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
