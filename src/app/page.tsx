@@ -2,13 +2,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getClubState, Member, Admin } from "@/lib/club-data";
+import { getClubState, Member, Admin, CLUB_EMAIL, ADMIN_PASSWORD } from "@/lib/club-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Trophy, ShieldCheck, User as UserIcon, LogOut, Loader2 } from "lucide-react";
+import { Trophy, ShieldCheck, User as UserIcon, LogOut, Loader2, AlertCircle } from "lucide-react";
 import AdminDashboard from "./admin/page";
 import MemberPortal from "./member/page";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Home() {
   const [identifier, setIdentifier] = useState("");
@@ -19,9 +20,13 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const state = getClubState();
-    setClubState(state);
-    setIsLoading(false);
+    // Small delay to ensure localStorage is ready and layout is hydrated
+    const timer = setTimeout(() => {
+      const state = getClubState();
+      setClubState(state);
+      setIsLoading(false);
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -37,7 +42,7 @@ export default function Home() {
     const trimmedPass = password.trim();
 
     if (!trimmedId || !trimmedPass) {
-        setError("Please enter both ID and Password.");
+        setError("Please enter both credentials.");
         return;
     }
 
@@ -45,13 +50,13 @@ export default function Home() {
     const admin = clubState.admins.find(
       (a: Admin) => a.email.toLowerCase() === trimmedId.toLowerCase() && a.password === trimmedPass
     );
+    
     if (admin) {
       setUser({ role: 'admin', data: admin });
       return;
     }
 
     // 2. Check Members
-    // Identifier can be Name or Phone. Password is always Phone.
     const member = clubState.members.find((m: Member) => {
       const phoneOnly = m.phone.replace(/\s+/g, '').replace('+', '');
       const passOnly = trimmedPass.replace(/\s+/g, '').replace('+', '');
@@ -71,13 +76,14 @@ export default function Home() {
       return;
     }
 
-    setError("Invalid credentials. Use your registered phone number as the password.");
+    setError("Invalid credentials. For admins, use your email. For members, use your phone as password.");
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="font-headline text-lg text-primary animate-pulse">Initializing Strikers Ledger...</p>
       </div>
     );
   }
@@ -107,7 +113,7 @@ export default function Home() {
               <label className="text-sm font-bold text-muted-foreground font-body uppercase tracking-wider">Email or Name</label>
               <Input 
                 type="text" 
-                placeholder="strikersudinur@gmail.com or Full Name" 
+                placeholder="strikersudinur@gmail.com" 
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="bg-secondary/30 border-none h-12 text-base focus-visible:ring-primary"
@@ -122,9 +128,14 @@ export default function Home() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="bg-secondary/30 border-none h-12 text-base focus-visible:ring-primary"
               />
-              <p className="text-[10px] text-muted-foreground font-body">Members: Use your registered phone number as your password</p>
+              <p className="text-[10px] text-muted-foreground font-body">Members: Use your phone number as password</p>
             </div>
-            {error && <p className="text-destructive text-sm font-body bg-destructive/5 p-3 rounded-md border border-destructive/10 text-center">{error}</p>}
+            {error && (
+              <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-xs font-body">{error}</AlertDescription>
+              </Alert>
+            )}
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white h-12 text-lg font-headline transition-all duration-300 transform hover:scale-[1.02]">
               Secure Login
             </Button>
@@ -133,7 +144,7 @@ export default function Home() {
       </Card>
       
       <div className="mt-12 text-center text-muted-foreground font-body text-sm max-w-xs opacity-60">
-        <p>Strikers Ledger v1.3 • Udinur, Kasargod, Kerala</p>
+        <p>Strikers Ledger v1.4 • Udinur, Kasargod, Kerala</p>
       </div>
     </div>
   );

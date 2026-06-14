@@ -37,15 +37,8 @@ export const TREASURER_PHONE = '+91 83300 39531';
 export function getClubState() {
   if (typeof window === 'undefined') return null;
   const saved = localStorage.getItem('strikers_ledger_state');
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (e) {
-      console.error("Failed to parse club state, resetting...", e);
-    }
-  }
   
-  const initialState = {
+  const defaultInitialState = {
     revenue: 30000,
     members: INITIAL_MEMBERS,
     admins: [
@@ -55,8 +48,27 @@ export function getClubState() {
       { id: 'initial-bal', type: 'income', amount: 30000, description: 'Initial club balance', date: new Date().toISOString() }
     ] as Transaction[]
   };
-  saveClubState(initialState);
-  return initialState;
+
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      // Ensure admins array exists even in old saves
+      if (!parsed.admins || !Array.isArray(parsed.admins)) {
+        parsed.admins = defaultInitialState.admins;
+      }
+      // Ensure initial balance transaction exists
+      if (!parsed.transactions.some((t: any) => t.id === 'initial-bal')) {
+        parsed.transactions.push(defaultInitialState.transactions[0]);
+        parsed.revenue += 30000;
+      }
+      return parsed;
+    } catch (e) {
+      console.error("Failed to parse club state, resetting...", e);
+    }
+  }
+  
+  saveClubState(defaultInitialState);
+  return defaultInitialState;
 }
 
 export function saveClubState(state: any) {
