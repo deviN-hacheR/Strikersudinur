@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { LogOut, CheckCircle2, XCircle, Phone, MessageCircle } from "lucide-react";
 
 export default function MemberPortal({ member, onLogout }: { member: Member, onLogout: () => void }) {
+  if (!member) {
+  return <div>Member not found</div>;
+}
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-10 animate-fade-in flex flex-col justify-center min-h-[80vh]">
       <div className="flex justify-between items-center mb-10">
