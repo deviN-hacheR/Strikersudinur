@@ -326,9 +326,36 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <section>
             <h3 className="text-2xl font-headline text-foreground mb-6">Member Registry</h3>
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-              {state.members.map((m: Member) => (
-                <MemberStatusCard key={m.id} member={m} isAdmin={true} onTogglePayment={handleTogglePayment} />
-              ))}
+             {state.members.map((m: Member) => (
+  <div key={m.id} className="mb-4">
+    <MemberStatusCard
+      member={m}
+      isAdmin={true}
+      onTogglePayment={handleTogglePayment}
+    />
+
+    <button
+      onClick={() => {
+        if (!confirm(`Delete ${m.name}?`)) return;
+
+        const updatedMembers = state.members.filter(
+          (member: Member) => member.id !== m.id
+        );
+
+        const newState = {
+          ...state,
+          members: updatedMembers,
+        };
+
+        setState(newState);
+        saveClubState(newState);
+      }}
+      className="mt-2 bg-red-600 text-white px-4 py-2 rounded"
+    >
+      Delete Member
+    </button>
+  </div>
+))}
             </div>
           </section>
 
