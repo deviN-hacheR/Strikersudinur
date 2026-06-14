@@ -5,7 +5,8 @@ import { Member, TREASURER_NAME, TREASURER_PHONE } from "@/lib/club-data";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LogOut, CheckCircle2, XCircle, Phone, MessageCircle } from "lucide-react";
-
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 export default function MemberPortal({ member, onLogout }: { member: Member, onLogout: () => void }) {
   if (!member) {
   return <div>Member not found</div>;

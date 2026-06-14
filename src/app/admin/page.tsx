@@ -14,9 +14,23 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [state, setState] = useState<any>(null);
+  const [state, setState] = useState<any>({
+  members: [],
+  revenue: 0,
+  transactions: [],
+  admins: []
+});
   const [isGenerating, setIsGenerating] = useState(false);
   const [reminderQueue, setReminderQueue] = useState<{ member: Member, message: string }[]>([]);
   const [showQueueModal, setShowQueueModal] = useState(false);
@@ -26,15 +40,22 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [newAdmin, setNewAdmin] = useState({ name: '', email: '', password: '' });
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
-const clubState = getClubState();
 
-if (!clubState) return;
+useEffect(() => {
+  const unsub = onSnapshot(collection(db, "members"), (snapshot) => {
+    const members = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
-setState({
-  ...clubState,
-  member,
-});
+    setState((prev: any) => ({
+      ...prev,
+      members,
+    }));
+  });
 
+  return () => unsub();
+}, []);
   if (!state) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -42,22 +63,54 @@ setState({
       </div>
     );
   }
+  const handleAddMember = async () => {
+  if (!newMember.name || !newMember.phone) return;
 
-  const handleAddMember = () => {
-    if (!newMember.name || !newMember.phone) return;
-    const member: Member = {
-        id: `m-${Date.now()}`,
-        name: newMember.name,
-        phone: newMember.phone,
-        hasPaidThisMonth: false
-    };
-    const newState = { ...state, members: [...state.members, member] };
-    setState(newState);
-    saveClubState(newState);
-    setNewMember({ name: '', phone: '' });
-    setIsMemberModalOpen(false);
-    toast({ title: "Member Added", description: `${member.name} joined the club registry.` });
-  };
+  await addDoc(collection(db, "members"), {
+    name: newMember.name,
+    phone: newMember.phone,
+    hasPaidThisMonth: false,
+  });
+
+  setNewMember({ name: "", phone: "" });
+  setIsMemberModalOpen(false);
+
+  // 🔥 REFRESH DATA AFTER ADD
+  const snapshot = await getDocs(collection(db, "members"));
+
+  const members = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+ setState((prev: any) => ({
+  ...prev,
+  members,
+}));
+};
+const handleDeleteMember = async (memberId: string) => {
+  try {
+    await deleteDoc(doc(db, "members", memberId));
+
+    // remove from UI immediately
+    setState((prev: any) => ({
+      ...prev,
+      members: prev.members.filter((m: Member) => m.id !== memberId),
+    }));
+
+    toast({
+      title: "Member Deleted",
+      description: "Member removed from Firebase.",
+    });
+  } catch (error) {
+    console.error(error);
+    toast({
+      title: "Delete Failed",
+      description: "Something went wrong.",
+      variant: "destructive",
+    });
+  }
+};
 
   const handleAddAdmin = () => {
     if (!newAdmin.name || !newAdmin.email || !newAdmin.password) return;
@@ -70,13 +123,15 @@ setState({
     toast({ title: "Admin Authorized", description: `${admin.name} now has administrative access.` });
   };
 
-  const handleTogglePayment = (memberId: string) => {
+  const handleTogglePayment = async (memberId: string) => {
     const memberIndex = state.members.findIndex((m: Member) => m.id === memberId);
     if (memberIndex === -1) return;
 
     const member = state.members[memberIndex];
     const becomingPaid = !member.hasPaidThisMonth;
-    
+    await updateDoc(doc(db, "members", memberId), {
+  hasPaidThisMonth: becomingPaid,
+});
     const newMembers = [...state.members];
     newMembers[memberIndex] = { ...member, hasPaidThisMonth: becomingPaid };
 
@@ -90,6 +145,7 @@ setState({
         amount: 100,
         description: `Monthly Fee - ${member.name}`,
         date: new Date().toISOString()
+        
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
@@ -187,6 +243,7 @@ setState({
   };
 
   return (
+    
     <div className="max-w-7xl mx-auto p-6 md:p-10 animate-fade-in">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
         <div>
@@ -194,10 +251,24 @@ setState({
           <p className="font-body text-muted-foreground italic">Managing the legacy of Strikers Udinur</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onLogout} className="font-body border-primary text-primary hover:bg-primary/5">
-            <LogOut className="mr-2 h-4 w-4" /> Sign Out
-          </Button>
-        </div>
+  <Button
+    onClick={async () => {
+      await addDoc(collection(db, "members"), {
+        name: "Test User",
+        phone: "1234567890",
+        hasPaidThisMonth: false,
+      });
+
+      alert("Firebase Working!");
+    }}
+  >
+    Test Firebase
+  </Button>
+
+  <Button variant="outline" onClick={onLogout}>
+    <LogOut className="mr-2 h-4 w-4" /> Sign Out
+  </Button>
+</div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
@@ -327,34 +398,23 @@ setState({
           <section>
             <h3 className="text-2xl font-headline text-foreground mb-6">Member Registry</h3>
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-             {state.members.map((m: Member) => (
-  <div key={m.id} className="mb-4">
+              {state.members.map((m: Member) => (
+  <div key={m.id} className="flex flex-col gap-2">
+
     <MemberStatusCard
       member={m}
       isAdmin={true}
       onTogglePayment={handleTogglePayment}
     />
 
-    <button
-      onClick={() => {
-        if (!confirm(`Delete ${m.name}?`)) return;
-
-        const updatedMembers = state.members.filter(
-          (member: Member) => member.id !== m.id
-        );
-
-        const newState = {
-          ...state,
-          members: updatedMembers,
-        };
-
-        setState(newState);
-        saveClubState(newState);
-      }}
-      className="mt-2 bg-red-600 text-white px-4 py-2 rounded"
+    <Button
+      variant="destructive"
+      size="sm"
+      onClick={() => handleDeleteMember(m.id)}
     >
       Delete Member
-    </button>
+    </Button>
+
   </div>
 ))}
             </div>
@@ -411,4 +471,5 @@ setState({
       </Dialog>
     </div>
   );
+  
 }
