@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MemberStatusCard } from "@/components/dashboard/MemberStatusCard";
 import { TransactionModal } from "@/components/dashboard/TransactionModal";
-import { TrendingUp, Users, LogOut, Send, MessageSquareText, Loader2, ExternalLink, AlertCircle, RefreshCcw } from "lucide-react";
+import { TrendingUp, Users, LogOut, Send, MessageSquareText, Loader2, ExternalLink, AlertCircle } from "lucide-react";
 import { automatedPaymentReminders } from "@/ai/flows/automated-payment-reminders";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -35,18 +36,22 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   const handleTogglePayment = (memberId: string) => {
-    const member = state.members.find((m: Member) => m.id === memberId);
-    if (!member) return;
+    const memberIndex = state.members.findIndex((m: Member) => m.id === memberId);
+    if (memberIndex === -1) return;
 
+    const member = state.members[memberIndex];
     const becomingPaid = !member.hasPaidThisMonth;
     
+    const newMembers = [...state.members];
+    newMembers[memberIndex] = { ...member, hasPaidThisMonth: becomingPaid };
+
     let newTransactions = [...state.transactions];
     let newRevenue = state.revenue;
 
     if (becomingPaid) {
-      // Create an income record
+      // Create a fee income record automatically
       const t: Transaction = {
-        id: `pay-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        id: `fee-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         type: 'income',
         amount: 100,
         description: `Monthly Fee - ${member.name}`,
@@ -55,7 +60,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
     } else {
-      // Remove the latest corresponding income record for this member
+      // Find and remove the latest fee record for this member if unmarking
       const lastTransactionIndex = newTransactions.findIndex(t => 
         t.description === `Monthly Fee - ${member.name}` && t.type === 'income'
       );
@@ -64,13 +69,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         newTransactions = newTransactions.filter((_, idx) => idx !== lastTransactionIndex);
       }
     }
-
-    const newMembers = state.members.map((m: Member) => {
-      if (m.id === memberId) {
-        return { ...m, hasPaidThisMonth: becomingPaid };
-      }
-      return m;
-    });
 
     const newState = {
       ...state,
@@ -83,10 +81,10 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     saveClubState(newState);
     
     toast({
-      title: becomingPaid ? "Payment Verified" : "Payment Revoked",
+      title: becomingPaid ? "Payment Verified" : "Verification Revoked",
       description: becomingPaid 
-        ? `₹100 added to revenue for ${member.name}.`
-        : `₹100 removed from revenue for ${member.name}.`,
+        ? `₹100 added to revenue from ${member.name}.`
+        : `₹100 deducted from revenue for ${member.name}.`,
       variant: becomingPaid ? "default" : "destructive"
     });
   };
@@ -105,7 +103,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     };
     setState(newState);
     saveClubState(newState);
-    toast({ title: "Ledger Updated", description: `${t.type === 'income' ? 'Income' : 'Expense'} of ₹${t.amount} recorded.` });
+    toast({ title: "Entry Recorded", description: `${t.type.toUpperCase()}: ₹${t.amount} saved to ledger.` });
   };
 
   const generateReminders = async (dayLabel: string) => {
@@ -113,22 +111,21 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     
     if (unpaidMembers.length === 0) {
       toast({ 
-        title: "All Settled", 
-        description: "Great news! Every member has paid their fee for this month.",
+        title: "All Clear", 
+        description: "No members are currently in arrears for this month.",
       });
       return;
     }
 
     setIsGenerating(true);
     toast({ 
-      title: "AI Engine Starting", 
-      description: `Drafting personalized WhatsApp alerts for ${unpaidMembers.length} members. This may take a moment...` 
+      title: "AI Drafts Initialized", 
+      description: `Analyzing dues for ${unpaidMembers.length} members...`,
     });
     
     try {
       const results: { member: Member, message: string }[] = [];
       
-      // Process members one by one to avoid overwhelming the server action
       for (const member of unpaidMembers) {
         try {
           const result = await automatedPaymentReminders({
@@ -139,25 +136,24 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           });
           results.push({ member, message: result.reminderMessage });
         } catch (err) {
-          console.error(`Error generating reminder for ${member.name}:`, err);
-          // We continue to the next member even if one fails
+          console.error(`AI Failure for ${member.name}:`, err);
         }
       }
       
       if (results.length === 0) {
-        throw new Error("Could not generate any messages. Please check your AI configuration.");
+        throw new Error("The AI failed to generate messages. Check your API configuration.");
       }
 
       setReminderQueue(results);
       setShowQueueModal(true);
       toast({ 
-        title: "Alerts Prepared", 
-        description: `Drafts ready for ${results.length} members. Open the queue to send.` 
+        title: "Drafts Ready", 
+        description: `Successfully prepared ${results.length} reminder alerts.` 
       });
     } catch (error: any) {
       toast({
-        title: "Generation Failed",
-        description: error.message || "The AI service is currently unavailable. Please try again later.",
+        title: "Alert System Offline",
+        description: error.message || "We encountered an error generating the messages.",
         variant: "destructive"
       });
     } finally {
@@ -190,12 +186,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <Card className="bg-primary text-white border-none shadow-xl transform hover:scale-[1.01] transition-transform">
           <CardContent className="p-8">
             <div className="flex justify-between items-start mb-4">
-              <p className="font-body uppercase tracking-widest text-xs opacity-80">Club Balance</p>
+              <p className="font-body uppercase tracking-widest text-xs opacity-80">Total Revenue</p>
               <TrendingUp className="h-5 w-5 opacity-80" />
             </div>
             <h2 className="text-4xl font-headline">₹{state.revenue.toLocaleString()}</h2>
             <div className="mt-4 pt-4 border-t border-white/20 flex gap-4 text-xs font-body">
-              <span>{state.transactions.length} Logs</span>
+              <span>{state.transactions.length} Records</span>
               <span>•</span>
               <span>{state.members.length} Members</span>
             </div>
@@ -205,18 +201,18 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <Card className="bg-accent text-white border-none shadow-xl transform hover:scale-[1.01] transition-transform">
           <CardContent className="p-8">
             <div className="flex justify-between items-start mb-4">
-              <p className="font-body uppercase tracking-widest text-xs opacity-80">Current Month</p>
+              <p className="font-body uppercase tracking-widest text-xs opacity-80">Active Collections</p>
               <Users className="h-5 w-5 opacity-80" />
             </div>
             <h2 className="text-4xl font-headline">
               {state.members.filter((m: Member) => m.hasPaidThisMonth).length}/{state.members.length}
             </h2>
-            <p className="mt-2 text-xs font-body opacity-80">Members marked as Paid</p>
+            <p className="mt-2 text-xs font-body opacity-80">Members Paid This Month</p>
           </CardContent>
         </Card>
 
         <Card className="bg-white border-none shadow-xl p-8 flex flex-col justify-center">
-          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Treasurer</p>
+          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Treasurer Support</p>
           <div className="flex items-center gap-4">
             <div className="h-10 w-10 bg-secondary rounded-full flex items-center justify-center text-primary">
               <MessageSquareText className="h-5 w-5" />
@@ -261,7 +257,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     {state.transactions.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center py-10 font-body text-muted-foreground">
-                          No transactions found.
+                          No transactions found in ledger.
                         </TableCell>
                       </TableRow>
                     )}
@@ -274,7 +270,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         <div className="space-y-10">
           <section>
-            <h3 className="text-2xl font-headline text-foreground mb-6">Active Members</h3>
+            <h3 className="text-2xl font-headline text-foreground mb-6">Member Registry</h3>
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
               {state.members.map((m: Member) => (
                 <MemberStatusCard 
@@ -290,16 +286,16 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <section className="bg-secondary/20 p-6 rounded-2xl border border-primary/10">
             <div className="flex items-center gap-2 mb-4">
               <AlertCircle className="h-5 w-5 text-primary" />
-              <h3 className="text-xl font-headline text-primary">AI Reminders</h3>
+              <h3 className="text-xl font-headline text-primary">Automated Alerts</h3>
             </div>
             <p className="font-body text-sm text-muted-foreground mb-6">
-              Identify members who haven't paid and draft personalized WhatsApp messages using AI.
+              Generate personalized WhatsApp reminders for all unpaid members in one click.
             </p>
             <div className="flex flex-col gap-3">
               <Button 
                 onClick={() => generateReminders('the 5th of the month')} 
                 disabled={isGenerating}
-                className="bg-primary text-white font-body py-6"
+                className="bg-primary text-white font-body py-6 shadow-md"
               >
                 {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Send 5th Day Alert
@@ -319,15 +315,15 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <Dialog open={showQueueModal} onOpenChange={setShowQueueModal}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white rounded-3xl">
           <DialogHeader className="p-6 border-b bg-secondary/10">
             <DialogTitle className="text-2xl font-headline flex items-center gap-2">
               <MessageSquareText className="h-6 w-6 text-primary" />
               WhatsApp Reminder Queue
             </DialogTitle>
             <DialogDescription className="font-body text-base">
-              Personalized messages have been drafted for {reminderQueue.length} members. 
-              Click each button to open WhatsApp and send the message.
+              Personalized drafts for {reminderQueue.length} members. 
+              Review and click "Send" to open WhatsApp for each.
             </DialogDescription>
           </DialogHeader>
           
@@ -344,11 +340,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
                 <div className="p-4 bg-secondary/20 rounded-xl border border-dashed border-primary/20">
-                  <p className="font-body text-sm leading-relaxed whitespace-pre-wrap">"{item.message}"</p>
+                  <p className="font-body text-sm leading-relaxed whitespace-pre-wrap italic">"{item.message}"</p>
                 </div>
                 <Button 
                   onClick={() => sendToWhatsApp(item.member.phone, item.message)}
-                  className="w-full bg-accent text-white font-body h-12 hover:bg-accent/90 shadow-md"
+                  className="w-full bg-accent text-white font-body h-12 hover:bg-accent/90 shadow-md rounded-xl"
                 >
                   <ExternalLink className="mr-2 h-4 w-4" /> Send WhatsApp to {item.member.name.split(' ')[0]}
                 </Button>
