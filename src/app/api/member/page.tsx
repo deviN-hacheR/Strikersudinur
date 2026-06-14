@@ -36,6 +36,26 @@ export default function MemberPortal({ member, onLogout }: { member: Member, onL
           
           <h2 className="text-4xl font-headline mb-2">Namaste, {member.name}</h2>
           <p className="font-body text-muted-foreground text-lg mb-8 italic">Member ID: {member.id}</p>
+          <Button
+  variant="destructive"
+  className="mt-4"
+  onClick={async () => {
+    if (!confirm("Are you sure you want to delete this member?")) return;
+
+    const res = await fetch(`/api/members/${member.id}`, {
+      method: "DELETE",
+    });
+
+    if (res.ok) {
+      alert("Member deleted successfully");
+      onLogout();
+    } else {
+      alert("Failed to delete member");
+    }
+  }}
+>
+  Delete Member
+</Button>
           
           <div className="p-6 bg-secondary/30 rounded-2xl mb-8">
             <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-2">Monthly Fee Status</p>
