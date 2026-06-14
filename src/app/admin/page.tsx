@@ -92,7 +92,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
-      toast({ title: "Payment Verified", description: `₹100 added to revenue and ledger for ${member.name}.` });
+      toast({ title: "Payment Verified", description: `₹100 added to revenue and audit ledger for ${member.name}.` });
     } else {
       const lastTransactionIndex = newTransactions.findIndex(t => 
         t.description === `Monthly Fee - ${member.name}` && t.type === 'income'
@@ -130,12 +130,15 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     setIsGenerating(true);
-    toast({ title: "AI Drafts Initialized", description: `Generating alerts for ${unpaidMembers.length} members. This may take a moment...` });
+    toast({ title: "Processing Alerts", description: `Drafting messages for ${unpaidMembers.length} members...` });
     
     try {
       const results: { member: Member, message: string }[] = [];
+      let usedFallback = false;
+
       for (const member of unpaidMembers) {
         try {
+          // Attempt AI Generation
           const result = await automatedPaymentReminders({
             memberName: member.name,
             memberPhoneNumber: member.phone,
@@ -143,23 +146,31 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             reminderDate: dayLabel
           });
           results.push({ member, message: result.reminderMessage });
-        } catch (innerError) {
-          console.error(`Failed for ${member.name}:`, innerError);
-          // Continue with others even if one fails
+        } catch (error) {
+          // Fallback to Mock Template if AI fails (e.g. no API key)
+          usedFallback = true;
+          const fallbackMessage = `Namaste ${member.name},\n\nThis is a friendly reminder from Strikers Udinur. Our records show that the monthly fee of ₹100 for this month is still pending. \n\nPlease settle this by ${dayLabel} to help us continue our club activities smoothly.\n\nThank you for your support!\n- Strikers Udinur Management`;
+          results.push({ member, message: fallbackMessage });
         }
-      }
-
-      if (results.length === 0) {
-        throw new Error("Could not generate any messages. Please check if your GOOGLE_GENAI_API_KEY is set in the .env file.");
       }
 
       setReminderQueue(results);
       setShowQueueModal(true);
-    } catch (error: any) {
-      console.error("AI Error:", error);
+
+      if (usedFallback) {
+        toast({ 
+          title: "Demo Mode Active", 
+          description: "Using standard templates because the AI API key is not configured.",
+          variant: "default"
+        });
+      } else {
+        toast({ title: "AI Drafts Ready", description: "Personalized messages generated successfully." });
+      }
+
+    } catch (globalError: any) {
       toast({ 
         title: "System Error", 
-        description: error.message || "Connection failed. Please ensure your Gemini API Key is valid.", 
+        description: "Failed to initialize the queue. Please try again.", 
         variant: "destructive" 
       });
     } finally {
@@ -343,7 +354,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white rounded-3xl">
           <DialogHeader className="p-6 border-b bg-secondary/10">
             <DialogTitle className="text-2xl font-headline flex items-center gap-2"><MessageSquareText className="h-6 w-6 text-primary" /> WhatsApp Queue</DialogTitle>
-            <DialogDescription className="font-body text-base">Personalized drafts for {reminderQueue.length} members.</DialogDescription>
+            <DialogDescription className="font-body text-base">Drafts for {reminderQueue.length} unpaid members.</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-secondary/5">
             {reminderQueue.map((item, index) => (
