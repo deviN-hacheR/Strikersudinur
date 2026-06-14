@@ -26,13 +26,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [newAdmin, setNewAdmin] = useState({ name: '', email: '', password: '' });
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+const clubState = getClubState();
 
-  useEffect(() => {
-    const clubState = getClubState();
-    if (clubState) {
-      setState(clubState);
-    }
-  }, []);
+if (!clubState) return;
+
+setState({
+  ...clubState,
+  member,
+});
 
   if (!state) {
     return (
