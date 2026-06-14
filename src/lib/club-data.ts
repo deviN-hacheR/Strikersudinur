@@ -39,10 +39,10 @@ export function getClubState() {
   }
   
   const initialState = {
-    revenue: 5000,
+    revenue: 30000,
     members: INITIAL_MEMBERS,
     transactions: [
-      { id: 't1', type: 'income', amount: 5000, description: 'Initial club balance', date: new Date().toISOString() }
+      { id: 't1', type: 'income', amount: 30000, description: 'Initial club balance', date: new Date().toISOString() }
     ] as Transaction[]
   };
   saveClubState(initialState);

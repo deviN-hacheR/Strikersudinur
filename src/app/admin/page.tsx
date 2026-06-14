@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -49,7 +48,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     let newRevenue = state.revenue;
 
     if (becomingPaid) {
-      // Create a fee income record automatically
+      // Add ₹100 to revenue and create a ledger entry
       const t: Transaction = {
         id: `fee-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         type: 'income',
@@ -59,8 +58,13 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
+      
+      toast({
+        title: "Payment Verified",
+        description: `₹100 added to revenue and ledger for ${member.name}.`,
+      });
     } else {
-      // Find and remove the latest fee record for this member if unmarking
+      // Remove the last fee entry and deduct from revenue
       const lastTransactionIndex = newTransactions.findIndex(t => 
         t.description === `Monthly Fee - ${member.name}` && t.type === 'income'
       );
@@ -68,6 +72,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         newRevenue -= newTransactions[lastTransactionIndex].amount;
         newTransactions = newTransactions.filter((_, idx) => idx !== lastTransactionIndex);
       }
+      
+      toast({
+        title: "Verification Revoked",
+        description: `₹100 removed from revenue and ledger for ${member.name}.`,
+        variant: "destructive"
+      });
     }
 
     const newState = {
@@ -79,14 +89,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
     setState(newState);
     saveClubState(newState);
-    
-    toast({
-      title: becomingPaid ? "Payment Verified" : "Verification Revoked",
-      description: becomingPaid 
-        ? `₹100 added to revenue from ${member.name}.`
-        : `₹100 deducted from revenue for ${member.name}.`,
-      variant: becomingPaid ? "default" : "destructive"
-    });
   };
 
   const addTransaction = (t: { type: 'income' | 'expense', amount: number, description: string }) => {
@@ -124,24 +126,16 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     });
     
     try {
+      // Process members one by one to ensure stability
       const results: { member: Member, message: string }[] = [];
-      
       for (const member of unpaidMembers) {
-        try {
-          const result = await automatedPaymentReminders({
-            memberName: member.name,
-            memberPhoneNumber: member.phone,
-            clubName: "Strikers Udinur",
-            reminderDate: dayLabel
-          });
-          results.push({ member, message: result.reminderMessage });
-        } catch (err) {
-          console.error(`AI Failure for ${member.name}:`, err);
-        }
-      }
-      
-      if (results.length === 0) {
-        throw new Error("The AI failed to generate messages. Check your API configuration.");
+        const result = await automatedPaymentReminders({
+          memberName: member.name,
+          memberPhoneNumber: member.phone,
+          clubName: "Strikers Udinur",
+          reminderDate: dayLabel
+        });
+        results.push({ member, message: result.reminderMessage });
       }
 
       setReminderQueue(results);
@@ -152,8 +146,8 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       });
     } catch (error: any) {
       toast({
-        title: "Alert System Offline",
-        description: error.message || "We encountered an error generating the messages.",
+        title: "Alert System Error",
+        description: "Failed to generate AI messages. Please try again later.",
         variant: "destructive"
       });
     } finally {
