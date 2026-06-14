@@ -7,6 +7,12 @@ export interface Member {
   hasPaidThisMonth: boolean;
 }
 
+export interface Admin {
+  email: string;
+  password: string;
+  name: string;
+}
+
 export interface Transaction {
   id: string;
   type: 'income' | 'expense';
@@ -41,6 +47,9 @@ export function getClubState() {
   const initialState = {
     revenue: 30000,
     members: INITIAL_MEMBERS,
+    admins: [
+      { email: CLUB_EMAIL, password: ADMIN_PASSWORD, name: 'Super Admin' }
+    ] as Admin[],
     transactions: [
       { id: 't1', type: 'income', amount: 30000, description: 'Initial club balance', date: new Date().toISOString() }
     ] as Transaction[]

@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getClubState, saveClubState, Transaction, Member, TREASURER_NAME, TREASURER_PHONE } from "@/lib/club-data";
+import { getClubState, saveClubState, Transaction, Member, Admin, TREASURER_NAME, TREASURER_PHONE } from "@/lib/club-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MemberStatusCard } from "@/components/dashboard/MemberStatusCard";
 import { TransactionModal } from "@/components/dashboard/TransactionModal";
-import { TrendingUp, Users, LogOut, Send, MessageSquareText, Loader2, ExternalLink, AlertCircle } from "lucide-react";
+import { TrendingUp, Users, LogOut, Send, MessageSquareText, Loader2, ExternalLink, AlertCircle, UserPlus, ShieldAlert } from "lucide-react";
 import { automatedPaymentReminders } from "@/ai/flows/automated-payment-reminders";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [state, setState] = useState<any>(null);
@@ -18,6 +20,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [reminderQueue, setReminderQueue] = useState<{ member: Member, message: string }[]>([]);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const { toast } = useToast();
+
+  // New User Forms
+  const [newMember, setNewMember] = useState({ name: '', phone: '' });
+  const [newAdmin, setNewAdmin] = useState({ name: '', email: '', password: '' });
+  const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
   useEffect(() => {
     const clubState = getClubState();
@@ -34,6 +42,33 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     );
   }
 
+  const handleAddMember = () => {
+    if (!newMember.name || !newMember.phone) return;
+    const member: Member = {
+        id: `m-${Date.now()}`,
+        name: newMember.name,
+        phone: newMember.phone,
+        hasPaidThisMonth: false
+    };
+    const newState = { ...state, members: [...state.members, member] };
+    setState(newState);
+    saveClubState(newState);
+    setNewMember({ name: '', phone: '' });
+    setIsMemberModalOpen(false);
+    toast({ title: "Member Added", description: `${member.name} joined the club registry.` });
+  };
+
+  const handleAddAdmin = () => {
+    if (!newAdmin.name || !newAdmin.email || !newAdmin.password) return;
+    const admin: Admin = { ...newAdmin };
+    const newState = { ...state, admins: [...state.admins, admin] };
+    setState(newState);
+    saveClubState(newState);
+    setNewAdmin({ name: '', email: '', password: '' });
+    setIsAdminModalOpen(false);
+    toast({ title: "Admin Authorized", description: `${admin.name} now has administrative access.` });
+  };
+
   const handleTogglePayment = (memberId: string) => {
     const memberIndex = state.members.findIndex((m: Member) => m.id === memberId);
     if (memberIndex === -1) return;
@@ -48,7 +83,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     let newRevenue = state.revenue;
 
     if (becomingPaid) {
-      // Add ₹100 to revenue and create a ledger entry
       const t: Transaction = {
         id: `fee-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         type: 'income',
@@ -58,13 +92,8 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       };
       newTransactions = [t, ...newTransactions];
       newRevenue += 100;
-      
-      toast({
-        title: "Payment Verified",
-        description: `₹100 added to revenue and ledger for ${member.name}.`,
-      });
+      toast({ title: "Payment Verified", description: `₹100 added to revenue for ${member.name}.` });
     } else {
-      // Remove the last fee entry and deduct from revenue
       const lastTransactionIndex = newTransactions.findIndex(t => 
         t.description === `Monthly Fee - ${member.name}` && t.type === 'income'
       );
@@ -72,21 +101,10 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         newRevenue -= newTransactions[lastTransactionIndex].amount;
         newTransactions = newTransactions.filter((_, idx) => idx !== lastTransactionIndex);
       }
-      
-      toast({
-        title: "Verification Revoked",
-        description: `₹100 removed from revenue and ledger for ${member.name}.`,
-        variant: "destructive"
-      });
+      toast({ title: "Verification Revoked", description: `₹100 removed from records.`, variant: "destructive" });
     }
 
-    const newState = {
-      ...state,
-      members: newMembers,
-      revenue: newRevenue,
-      transactions: newTransactions
-    };
-
+    const newState = { ...state, members: newMembers, revenue: newRevenue, transactions: newTransactions };
     setState(newState);
     saveClubState(newState);
   };
@@ -98,35 +116,23 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       date: new Date().toISOString()
     };
     const newRevenue = t.type === 'income' ? state.revenue + t.amount : state.revenue - t.amount;
-    const newState = {
-      ...state,
-      revenue: newRevenue,
-      transactions: [newTransaction, ...state.transactions]
-    };
+    const newState = { ...state, revenue: newRevenue, transactions: [newTransaction, ...state.transactions] };
     setState(newState);
     saveClubState(newState);
-    toast({ title: "Entry Recorded", description: `${t.type.toUpperCase()}: ₹${t.amount} saved to ledger.` });
+    toast({ title: "Entry Recorded", description: `₹${t.amount} saved to ledger.` });
   };
 
   const generateReminders = async (dayLabel: string) => {
     const unpaidMembers = state.members.filter((m: Member) => !m.hasPaidThisMonth);
-    
     if (unpaidMembers.length === 0) {
-      toast({ 
-        title: "All Clear", 
-        description: "No members are currently in arrears for this month.",
-      });
+      toast({ title: "All Clear", description: "No members are currently in arrears." });
       return;
     }
 
     setIsGenerating(true);
-    toast({ 
-      title: "AI Drafts Initialized", 
-      description: `Analyzing dues for ${unpaidMembers.length} members...`,
-    });
+    toast({ title: "AI Drafts Initialized", description: `Processing alerts...` });
     
     try {
-      // Process members one by one to ensure stability
       const results: { member: Member, message: string }[] = [];
       for (const member of unpaidMembers) {
         const result = await automatedPaymentReminders({
@@ -137,19 +143,10 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         });
         results.push({ member, message: result.reminderMessage });
       }
-
       setReminderQueue(results);
       setShowQueueModal(true);
-      toast({ 
-        title: "Drafts Ready", 
-        description: `Successfully prepared ${results.length} reminder alerts.` 
-      });
     } catch (error: any) {
-      toast({
-        title: "Alert System Error",
-        description: "Failed to generate AI messages. Please try again later.",
-        variant: "destructive"
-      });
+      toast({ title: "System Error", description: "Failed to generate AI messages.", variant: "destructive" });
     } finally {
       setIsGenerating(false);
     }
@@ -158,8 +155,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const sendToWhatsApp = (phone: string, message: string) => {
     const cleanPhone = phone.replace(/\s+/g, '').replace('+', '');
     const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
-    window.open(whatsappUrl, '_blank');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
   };
 
   return (
@@ -177,7 +173,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-        <Card className="bg-primary text-white border-none shadow-xl transform hover:scale-[1.01] transition-transform">
+        <Card className="bg-primary text-white border-none shadow-xl">
           <CardContent className="p-8">
             <div className="flex justify-between items-start mb-4">
               <p className="font-body uppercase tracking-widest text-xs opacity-80">Total Revenue</p>
@@ -192,29 +188,75 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </CardContent>
         </Card>
 
-        <Card className="bg-accent text-white border-none shadow-xl transform hover:scale-[1.01] transition-transform">
+        <Card className="bg-accent text-white border-none shadow-xl">
           <CardContent className="p-8">
             <div className="flex justify-between items-start mb-4">
-              <p className="font-body uppercase tracking-widest text-xs opacity-80">Active Collections</p>
+              <p className="font-body uppercase tracking-widest text-xs opacity-80">Collection Status</p>
               <Users className="h-5 w-5 opacity-80" />
             </div>
             <h2 className="text-4xl font-headline">
               {state.members.filter((m: Member) => m.hasPaidThisMonth).length}/{state.members.length}
             </h2>
-            <p className="mt-2 text-xs font-body opacity-80">Members Paid This Month</p>
+            <p className="mt-2 text-xs font-body opacity-80">Members Settled This Month</p>
           </CardContent>
         </Card>
 
         <Card className="bg-white border-none shadow-xl p-8 flex flex-col justify-center">
-          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Treasurer Support</p>
-          <div className="flex items-center gap-4">
-            <div className="h-10 w-10 bg-secondary rounded-full flex items-center justify-center text-primary">
-              <MessageSquareText className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-headline text-lg">{TREASURER_NAME}</p>
-              <p className="font-body text-sm text-primary font-bold">{TREASURER_PHONE}</p>
-            </div>
+          <p className="font-body uppercase tracking-widest text-xs text-muted-foreground mb-4">Admin Management</p>
+          <div className="flex flex-col gap-2">
+            <Dialog open={isMemberModalOpen} onOpenChange={setIsMemberModalOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full justify-start font-body"><UserPlus className="mr-2 h-4 w-4" /> Add New Member</Button>
+              </DialogTrigger>
+              <DialogContent className="bg-white">
+                <DialogHeader>
+                    <DialogTitle className="font-headline">New Member Entry</DialogTitle>
+                    <DialogDescription>Register a new player or artist into the club ledger.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Full Name</Label>
+                        <Input value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} placeholder="e.g. Rahul Sharma" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Phone Number</Label>
+                        <Input value={newMember.phone} onChange={e => setNewMember({...newMember, phone: e.target.value})} placeholder="91XXXXXXXXXX" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={handleAddMember} className="w-full">Register Member</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isAdminModalOpen} onOpenChange={setIsAdminModalOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-start font-body text-muted-foreground hover:text-primary"><ShieldAlert className="mr-2 h-4 w-4" /> Authorize New Admin</Button>
+              </DialogTrigger>
+              <DialogContent className="bg-white">
+                <DialogHeader>
+                    <DialogTitle className="font-headline">Authorize Treasurer</DialogTitle>
+                    <DialogDescription>Grant full ledger access to another person.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Admin Name</Label>
+                        <Input value={newAdmin.name} onChange={e => setNewAdmin({...newAdmin, name: e.target.value})} placeholder="Full Name" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input value={newAdmin.email} onChange={e => setNewAdmin({...newAdmin, email: e.target.value})} placeholder="admin@email.com" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Access Password</Label>
+                        <Input type="password" value={newAdmin.password} onChange={e => setNewAdmin({...newAdmin, password: e.target.value})} placeholder="Secret Key" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={handleAddAdmin} className="w-full bg-accent">Grant Access</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </Card>
       </div>
@@ -239,22 +281,13 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <TableBody>
                     {state.transactions.map((t: Transaction) => (
                       <TableRow key={t.id}>
-                        <TableCell className="font-body text-muted-foreground text-xs whitespace-nowrap">
-                          {new Date(t.date).toLocaleDateString()}
-                        </TableCell>
+                        <TableCell className="font-body text-muted-foreground text-xs">{new Date(t.date).toLocaleDateString()}</TableCell>
                         <TableCell className="font-headline text-sm">{t.description}</TableCell>
                         <TableCell className={`text-right font-body font-bold ${t.type === 'income' ? 'text-accent' : 'text-destructive'}`}>
                           {t.type === 'income' ? '+' : '-'} ₹{t.amount.toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}
-                    {state.transactions.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center py-10 font-body text-muted-foreground">
-                          No transactions found in ledger.
-                        </TableCell>
-                      </TableRow>
-                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -267,12 +300,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <h3 className="text-2xl font-headline text-foreground mb-6">Member Registry</h3>
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
               {state.members.map((m: Member) => (
-                <MemberStatusCard 
-                  key={m.id} 
-                  member={m} 
-                  isAdmin={true} 
-                  onTogglePayment={handleTogglePayment} 
-                />
+                <MemberStatusCard key={m.id} member={m} isAdmin={true} onTogglePayment={handleTogglePayment} />
               ))}
             </div>
           </section>
@@ -282,24 +310,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <AlertCircle className="h-5 w-5 text-primary" />
               <h3 className="text-xl font-headline text-primary">Automated Alerts</h3>
             </div>
-            <p className="font-body text-sm text-muted-foreground mb-6">
-              Generate personalized WhatsApp reminders for all unpaid members in one click.
-            </p>
             <div className="flex flex-col gap-3">
-              <Button 
-                onClick={() => generateReminders('the 5th of the month')} 
-                disabled={isGenerating}
-                className="bg-primary text-white font-body py-6 shadow-md"
-              >
+              <Button onClick={() => generateReminders('the 5th')} disabled={isGenerating} className="bg-primary text-white font-body py-6">
                 {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Send 5th Day Alert
               </Button>
-              <Button 
-                onClick={() => generateReminders('the 21st of the month')} 
-                disabled={isGenerating}
-                variant="outline" 
-                className="border-primary text-primary font-body hover:bg-primary/5 py-6"
-              >
+              <Button onClick={() => generateReminders('the 21st')} disabled={isGenerating} variant="outline" className="border-primary text-primary font-body py-6">
                 {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Send 21st Day Alert
               </Button>
@@ -311,16 +327,9 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <Dialog open={showQueueModal} onOpenChange={setShowQueueModal}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white rounded-3xl">
           <DialogHeader className="p-6 border-b bg-secondary/10">
-            <DialogTitle className="text-2xl font-headline flex items-center gap-2">
-              <MessageSquareText className="h-6 w-6 text-primary" />
-              WhatsApp Reminder Queue
-            </DialogTitle>
-            <DialogDescription className="font-body text-base">
-              Personalized drafts for {reminderQueue.length} members. 
-              Review and click "Send" to open WhatsApp for each.
-            </DialogDescription>
+            <DialogTitle className="text-2xl font-headline flex items-center gap-2"><MessageSquareText className="h-6 w-6 text-primary" /> WhatsApp Queue</DialogTitle>
+            <DialogDescription className="font-body text-base">Personalized drafts for {reminderQueue.length} members.</DialogDescription>
           </DialogHeader>
-          
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-secondary/5">
             {reminderQueue.map((item, index) => (
               <div key={index} className="bg-white p-5 rounded-2xl border shadow-sm flex flex-col gap-4">
@@ -329,27 +338,19 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <span className="font-headline font-bold text-lg text-primary block">{item.member.name}</span>
                     <span className="text-xs font-body text-muted-foreground">{item.member.phone}</span>
                   </div>
-                  <div className="bg-destructive/10 text-destructive text-[10px] font-bold px-2 py-1 rounded-full">
-                    UNPAID
-                  </div>
+                  <div className="bg-destructive/10 text-destructive text-[10px] font-bold px-2 py-1 rounded-full">UNPAID</div>
                 </div>
                 <div className="p-4 bg-secondary/20 rounded-xl border border-dashed border-primary/20">
                   <p className="font-body text-sm leading-relaxed whitespace-pre-wrap italic">"{item.message}"</p>
                 </div>
-                <Button 
-                  onClick={() => sendToWhatsApp(item.member.phone, item.message)}
-                  className="w-full bg-accent text-white font-body h-12 hover:bg-accent/90 shadow-md rounded-xl"
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" /> Send WhatsApp to {item.member.name.split(' ')[0]}
+                <Button onClick={() => sendToWhatsApp(item.member.phone, item.message)} className="w-full bg-accent text-white font-body h-12">
+                  <ExternalLink className="mr-2 h-4 w-4" /> Send WhatsApp
                 </Button>
               </div>
             ))}
           </div>
-          
           <DialogFooter className="p-6 border-t bg-white">
-            <Button variant="ghost" onClick={() => setShowQueueModal(false)} className="font-body">
-              Close Queue
-            </Button>
+            <Button variant="ghost" onClick={() => setShowQueueModal(false)} className="font-body">Close Queue</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

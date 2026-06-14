@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { CLUB_EMAIL, ADMIN_PASSWORD, INITIAL_MEMBERS, getClubState, saveClubState, Member } from "@/lib/club-data";
+import { getClubState, saveClubState, Member, Admin } from "@/lib/club-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,35 +12,51 @@ import MemberPortal from "./member/page";
 export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState<{ role: 'admin' | 'member', data?: Member } | null>(null);
+  const [user, setUser] = useState<{ role: 'admin' | 'member', data?: Member | Admin } | null>(null);
   const [error, setError] = useState("");
+  const [clubState, setClubState] = useState<any>(null);
+
+  useEffect(() => {
+    setClubState(getClubState());
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (email === CLUB_EMAIL) {
-      if (password === ADMIN_PASSWORD) {
-        setUser({ role: 'admin' });
-        return;
-      }
-      
-      const state = getClubState();
-      const member = state.members.find((m: Member) => m.phone.replace(/\s/g, '') === password.replace(/\s/g, ''));
-      if (member) {
+    if (!clubState) return;
+
+    // Check Admins
+    const admin = clubState.admins.find((a: Admin) => a.email === email && a.password === password);
+    if (admin) {
+      setUser({ role: 'admin', data: admin });
+      return;
+    }
+
+    // Check Members
+    const member = clubState.members.find((m: Member) => m.phone.replace(/\s/g, '') === password.replace(/\s/g, ''));
+    if (member && email === clubState.admins[0].email) { // Use super admin email as identifier or just match member
         setUser({ role: 'member', data: member });
         return;
-      }
     }
     
-    setError("Invalid credentials. Use club email and appropriate password.");
+    // Fallback for members just using phone
+    if (email.length < 5 && !email.includes('@')) {
+        const memberByPhone = clubState.members.find((m: Member) => m.phone.replace(/\s/g, '') === password.replace(/\s/g, ''));
+        if (memberByPhone) {
+            setUser({ role: 'member', data: memberByPhone });
+            return;
+        }
+    }
+
+    setError("Invalid credentials. Please check your login details.");
   };
 
   if (user?.role === 'admin') return <AdminDashboard onLogout={() => setUser(null)} />;
-  if (user?.role === 'member') return <MemberPortal member={user.data!} onLogout={() => setUser(null)} />;
+  if (user?.role === 'member') return <MemberPortal member={user.data as Member} onLogout={() => setUser(null)} />;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 animate-fade-in">
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 animate-fade-in bg-background">
       <div className="mb-12 text-center">
         <div className="mx-auto w-20 h-20 bg-primary rounded-full flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
           <Trophy className="text-white h-10 w-10" />
@@ -59,10 +74,10 @@ export default function Home() {
         <CardContent className="pb-10 px-8">
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-muted-foreground font-body uppercase tracking-wider">Email Address</label>
+              <label className="text-sm font-bold text-muted-foreground font-body uppercase tracking-wider">Login ID / Email</label>
               <Input 
-                type="email" 
-                placeholder="strikersudinur@gmail.com" 
+                type="text" 
+                placeholder="strikersudinur@gmail.com or Member ID" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bg-secondary/30 border-none h-12 text-base focus-visible:ring-primary"
@@ -88,8 +103,7 @@ export default function Home() {
       </Card>
       
       <div className="mt-12 text-center text-muted-foreground font-body text-sm max-w-xs opacity-60">
-        <p>Strikers Ledger v1.0 • Udinur, Kasargod, Kerala</p>
-        <p className="mt-1">Built with passion for arts and sports.</p>
+        <p>Strikers Ledger v1.2 • Udinur, Kasargod, Kerala</p>
       </div>
     </div>
   );
