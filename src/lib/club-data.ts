@@ -56,7 +56,7 @@ export function getClubState() {
       if (!parsed.admins || !Array.isArray(parsed.admins)) {
         parsed.admins = defaultInitialState.admins;
       }
-      // Ensure initial balance transaction exists
+      // Ensure initial balance transaction exists and revenue is correct
       if (!parsed.transactions.some((t: any) => t.id === 'initial-bal')) {
         parsed.transactions.push(defaultInitialState.transactions[0]);
         parsed.revenue += 30000;

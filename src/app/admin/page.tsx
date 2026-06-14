@@ -134,7 +134,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     
     try {
       const results: { member: Member, message: string }[] = [];
-      // Process sequentially to avoid race conditions or limits
+      // Sequential processing for reliability
       for (const member of unpaidMembers) {
         const result = await automatedPaymentReminders({
           memberName: member.name,
@@ -147,8 +147,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setReminderQueue(results);
       setShowQueueModal(true);
     } catch (error: any) {
-      console.error(error);
-      toast({ title: "System Error", description: "Failed to generate AI messages. Check your connection.", variant: "destructive" });
+      console.error("AI Error:", error);
+      toast({ 
+        title: "System Error", 
+        description: error.message || "Failed to generate AI messages. Check your connection or API key.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsGenerating(false);
     }
