@@ -179,9 +179,19 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   const sendToWhatsApp = (phone: string, message: string) => {
-    const cleanPhone = phone.replace(/\s+/g, '').replace('+', '');
+    // Clean the phone number: remove non-digits
+    const cleanPhone = phone.replace(/\D/g, '');
     const encodedMessage = encodeURIComponent(message);
-    window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
+    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+    
+    // Use window.open with a small delay to prevent browser blocking
+    setTimeout(() => {
+        const newTab = window.open(whatsappUrl, '_blank');
+        if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
+            // Fallback for popup blockers
+            window.location.assign(whatsappUrl);
+        }
+    }, 100);
   };
 
   return (
